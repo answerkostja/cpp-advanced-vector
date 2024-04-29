@@ -224,66 +224,45 @@ public:
 
     template <typename... Args>
     iterator Emplace(const_iterator pos, Args&&... args) {
-        bool is_valid_pos = false;
-        for (iterator iter = begin(); iter != end(); iter++) {
-            if (iter == const_cast<iterator>(pos)) {
-                is_valid_pos = true;
+        assert(pos >= begin() && pos <= end());
+        if (size_ < Capacity()) {
+            if (pos == end()) {
+                new (end()) T(std::forward<Args&&>(args)...);
+                ++size_;
+                return &*(const_cast<iterator>(pos));
             }
-        }
-        if(is_valid_pos){
-            if (size_ < Capacity()) {
-                if (pos == end()) {
-                    new (end()) T(std::forward<Args&&>(args)...);
-                    ++size_;
-                    return &*(const_cast<iterator>(pos));
-                }
-                OffsetRight(pos, args...);
-                return const_cast<iterator>(pos);
-            }
-            else {
-                size_t new_capacity = (size_ == 0 ? 1 : size_ * 2);
-                RawMemory<T> new_data(new_capacity);
-                new (new_data + (pos - begin())) T(std::forward<Args&&>(args)...);
-                if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                    std::uninitialized_move_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
-                    std::uninitialized_move_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
-                }
-                else {
-                    std::uninitialized_copy_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
-                    std::uninitialized_copy_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
-                }
-                data_.Swap(new_data);
-                std::destroy_n(new_data.GetAddress(), size_);
-                size_++;
-                return data_ + (const_cast<iterator>(pos) - new_data.GetAddress());
-            }
+            OffsetRight(pos, args...);
+            return const_cast<iterator>(pos);
         }
         else {
-            throw;
+            size_t new_capacity = (size_ == 0 ? 1 : size_ * 2);
+            RawMemory<T> new_data(new_capacity);
+            new (new_data + (pos - begin())) T(std::forward<Args&&>(args)...);
+            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+                std::uninitialized_move_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
+                std::uninitialized_move_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
+            }
+            else {
+                std::uninitialized_copy_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
+                std::uninitialized_copy_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
+        }
+        data_.Swap(new_data);
+        std::destroy_n(new_data.GetAddress(), size_);
+        size_++;
+        return data_ + (const_cast<iterator>(pos) - new_data.GetAddress());
         }
         return const_cast<iterator>(pos);
     }
     iterator Erase(const_iterator pos) noexcept/*(std::is_nothrow_move_assignable_v<T>);*/ {
-        bool is_valid_pos = false;
-        for (iterator iter = begin(); iter != end(); iter++) {
-            if (iter == const_cast<iterator>(pos)) {
-                is_valid_pos = true;
-            }
-        }
-        if (is_valid_pos) {
-            if (std::is_nothrow_move_assignable_v<T>) {
-                std::uninitialized_move_n(pos + 1, pos - begin() + 1, pos);
-            }
-            else {
-                std::copy_n(pos + 1, pos - begin() + 1, pos);
-            }
-            size_--;
-            end()->~T();
-            return const_cast<iterator>(pos);
+        assert(pos >= begin() && pos <= end());
+        if (std::is_nothrow_move_assignable_v<T>) {
+            std::uninitialized_move_n(pos + 1, pos - begin() + 1, pos);
         }
         else {
-            throw;
+            std::copy_n(pos + 1, pos - begin() + 1, pos);
         }
+        size_--;
+        end()->~T();
         return const_cast<iterator>(pos);
     }
     iterator Insert(const_iterator pos, const T& value) {
