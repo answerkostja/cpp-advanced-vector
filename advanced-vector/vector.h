@@ -235,26 +235,14 @@ public:
             return const_cast<iterator>(pos);
         }
         else {
-            size_t new_capacity = (size_ == 0 ? 1 : size_ * 2);
-            RawMemory<T> new_data(new_capacity);
-            new (new_data + (pos - begin())) T(std::forward<Args&&>(args)...);
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
-                std::uninitialized_move_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
-            }
-            else {
-                std::uninitialized_copy_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
-                std::uninitialized_copy_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
+            size_t offset = OffsetRightNewCapacity(pos, args...);
+            return data_ + offset;
         }
-        data_.Swap(new_data);
-        std::destroy_n(new_data.GetAddress(), size_);
-        size_++;
-        return data_ + (const_cast<iterator>(pos) - new_data.GetAddress());
-        }
+        
         return const_cast<iterator>(pos);
     }
     iterator Erase(const_iterator pos) noexcept/*(std::is_nothrow_move_assignable_v<T>);*/ {
-        assert(pos >= begin() && pos <= end());
+        assert(pos >= begin() && pos < end());
         if (std::is_nothrow_move_assignable_v<T>) {
             std::uninitialized_move_n(pos + 1, pos - begin() + 1, pos);
         }
@@ -277,10 +265,6 @@ public:
             size_--;
             std::destroy_at(end());
         }
-        else {
-            throw;
-        }
-        
     }
 
     ~Vector() {
@@ -328,6 +312,25 @@ private:
             new(const_cast<iterator>(pos)) T(std::move(temp));
         }
         size_++;
+    }
+
+    template <typename... Args>
+    size_t OffsetRightNewCapacity(const_iterator pos, Args&&... args) {
+        size_t new_capacity = (size_ == 0 ? 1 : size_ * 2);
+        RawMemory<T> new_data(new_capacity);
+        new (new_data + (pos - begin())) T(std::forward<Args&&>(args)...);
+        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+            std::uninitialized_move_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
+            std::uninitialized_move_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
+        }
+        else {
+            std::uninitialized_copy_n(data_.GetAddress(), pos - begin(), new_data.GetAddress());
+            std::uninitialized_copy_n(data_.GetAddress() + (pos - begin()), end() - pos, new_data.GetAddress() + (pos - begin() + 1));
+        }
+        data_.Swap(new_data);
+        std::destroy_n(new_data.GetAddress(), size_);
+        size_++;
+        return const_cast<iterator>(pos) - new_data.GetAddress();
     }
 
     RawMemory<T> data_;
